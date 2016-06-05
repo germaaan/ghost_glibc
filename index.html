@@ -29,6 +29,14 @@
     document.getElementsByTagName('head')[0].appendChild(link);
   </script>
 
+      <style media="screen" type="text/css">
+        .reveal section img {
+          vertical-align: middle;
+          background:none;
+          border:none;
+          box-shadow:none;
+        }
+      </style>
   <!--[if lt IE 9]>
 		<script src="lib/js/html5shiv.js"></script>
 		<![endif]-->
@@ -42,13 +50,186 @@
     <div class="slides">
       <section>
         <h2>GHOST: vulnerabilidad biblioteca “glibc”</h2>
-        <p>
-          <small>Germán Martínez Maldonado</small>
+        <p style="line-height: 43%">
+          <font size="4">
+            <i style="font-size: 25px;">Germán Martínez Maldonado</i>
+            <br/><br/><i style="font-size: 25px;">Administración de Sistemas y Seguridad</i>
+          </font>
+          <br/><br/>
+          <img alt="image" src="images/ghost.png" height="270" />
         </p>
       </section>
+      <section>
+      <section>
+        <h3>Problema</h3>
+        GHOST es un agujero de seguridad que permitiría la ejecución remota de código arbitrario en sistemas Linux, concretamente la vulnerabilidad afecta a la biblioteca <strong>glibc</strong>.
+      </section>
+      <section>
+        <h3>Problema</h3>
+        <strong>glibc</strong> es la biblioteca usada en los sistemas GNU/Linux para definir las llamadas al sistema y otras operaciones básicas como <i>open</i>, <i>malloc</i>, <i>printf</i>, <i>exit</i>, etc.
+      </section>
+      <section>
+        <h3>Problema</h3>
+          Es una vulnerabilidad <strong>grave</strong>: permite a los atacantes tomar completamente el control del sistema de la víctima de forma remota sin necesitar ningún conocimiento previo de las credenciales de usuario.
+      </section>
+      <section>
+        <h3>Problema</h3>
+          Consiste en producir un desbordamiento de buffer en la función <strong><i>__nss_hostname_digits_dots()</i></strong> de <strong>glibc</strong>.
+        </p><p>Esto puede ser provocado tanto local (archivo <i>/etc/host</i>) como remotamente (petición <i>DNS</i>) a través de todas las funciones <strong>gethostbyname*()</strong>.
+      </section>
+      <section>
+        <h3>Problema</h3>
+          <p><strong>Ejemplo</strong>: las aplicaciones de correo electrónico para conocer la dirección del servidor de correo intentan resolver nombres DNS principalmente a través del conjunto de funciones <i>gethostbyname*()</i>.
+          </p><p>Aplicaciones muy extendidas como <i>Apache</i>, <i>Exim</i>, <i>Sendmail</i>, <i>Nginx</i>, <i>MySQL</i> o <i>Samba</i> son afectadas por este problema.
+      </section>
+      <section>
+        <h3>Problema</h3>
+          	<p>El problema principalmente está en función <strong>__nss_hostname_digits_dots()</strong>, no calcula correctamente el tamaño del buffer que tiene que reservar puede sobrescribir datos arbitrariamente cuando se produce el desbordamiento.
+            </p><p>Aunque el tamaño de memoria sobrescrito es muy pequeño (máximo 4B), es suficiente para evitar técnicas como ASLR (Address Space Layout Randomization) y el bit NX (No-Execute).
+            </p>
+      </section>
+      <section>
+        <h3>Problema</h3>
+            <p>	Forma simple de explotarlo: solicitando resolver un nombre de host lo suficientemente largo (al menos 1 KB), algo que se puede conseguir simplemente enviando un correo electrónico.
+            </p>
+      </section>
+      <section>
+        <h3>Problema</h3>
+        <p>Para poder aprovechar la vulnerabilidad el nombre del host tiene que cumplir las siguientes características:
+          <ul>
+            <li>El nombre del host está compuesto completamente por dígitos y puntos</li>
+            <li>El nombre del host empieza y termina con un dígito</li>
+            <li>El nombre del host debe ser de la forma <i>a</i>, <i>a.b</i>, <i>a.b.c</i> o <i>a.b.c.d</i></li>
+          </ul>
+           Un <a href="https://blog.qualys.com/laws-of-vulnerabilities/2015/03/17/ghost-remote-code-execution-exploit">exploit</a> que sirve para explotar esta vulnerabilidad ha sido publicado.
+        </p>
+        </section>
+    </section>
+    <section>
+      <section>
+        <h3>Comprobación</h3>
+        <p>
+          Las versiones 2.2 a la 2.17 de glibc son vulnerables, mientras que de la versión 2.18 en adelante ya no existe la vulnerabilidad (no afecta a las versiones anteriores a 2.1.3).
+        </p>
+      </section>
+      <section>
+        <h3>Comprobación</h3>
+        <p>Conocida desde el año 2000, "solucionada" en el año 2013 mediante una actualización menor de la biblioteca glib (entre las versiones 2.17 y 2.18).
+        </p><p>No se clasificó como actualización de seguridad, por lo que la mayoría de distribuciones destinadas a servidores o con soporte extendido no la incluyeron por defecto.
+        </p>
+      </section>
+      <section>
+        <h3>Comprobación</h3>
+        <p>Distribuciones afectadas:
+          <ul>
+            <li>Arch: glibc <= 2.18-1</li>
+            <li>CentOS: versión 5.x, 6.x & 7.x</li>
+            <li>Debian: versión 7.x</li>
+            <li>Fedora: versión 19 y anteriores</li>
+            <li>Mint: versión 13.0</li>
+            <li>RHEL: versión 5.x, 6.x y 7.x</li>
+            <li>SUSE: prácticamente todas las versiones</li>
+            <li>Ubuntu: versión 10.04, 12.04 LTS</li>
+          <ul>
+        </p>
+      </section>
+      <section>
+        <h3>Comprobación</h3>
+        <p>Es posible comprobar si nuestro sistema está comprometido mediante un <a href="https://webshare.uchicago.edu/orgs/ITServices/itsec/Downloads/GHOST.c">script</a> realizado por la <a href="https://itservices.uchicago.edu/page/ghost-vulnerability">Universidad de Chicago</a>.
+          <pre>
+          <code data-trim contenteditable>
+#define CANARY "in_the_coal_mine"
+
+struct {
+  char buffer[1024];
+  char canary[sizeof(CANARY)];
+} temp = { "buffer", CANARY };
+
+int main(void) {
+  struct hostent resbuf;
+  struct hostent *result;
+  int herrno;
+  int retval;
+
+  /*** strlen (name) = size_needed - sizeof (*host_addr) - sizeof (*h_addr_ptrs) - 1; ***/
+  size_t len = sizeof(temp.buffer) - 16*sizeof(unsigned char) - 2*sizeof(char *) - 1;
+  char name[sizeof(temp.buffer)];
+  memset(name, '0', len);
+  name[len] = '\0';
+
+  retval = gethostbyname_r(name, &resbuf, temp.buffer, sizeof(temp.buffer), &result, &herrno);
+
+  if (strcmp(temp.canary, CANARY) != 0) {
+    puts("vulnerable");
+    exit(EXIT_SUCCESS);
+  }
+  if (retval == ERANGE) {
+    puts("not vulnerable");
+    exit(EXIT_SUCCESS);
+  }
+  puts("should not happen");
+  exit(EXIT_FAILURE);
+}
+          </code>
+        </pre>
+        </p>
+      </section>
+      <section>
+        <h3>Comprobación</h3>
+        <img alt="image" src="images/comprobacion.png" height="270" />
+      </section>
+    </section>
+
+<section>
+  <section>
+    <h3>Solución</h3>
+    <p> Si nuestra distribución es vulnerable, deberemos tomar las siguientes acciones:
+      <ul>
+        <li>Actualizar a glibc 2.18 o una versión más reciente</li>
+        <li>Reiniciar todos los procesos que cargan la biblioteca glibc</li>
+        <li>Corregir todos los archivos binarios que estén enlazados estáticamente contra versiones vulnerables de la biblioteca glibc</li>
+      </ul>
+    </p>
+  </section>
+  <section>
+    <h3>Solución</h3>
+    <p>	En sistemas Debian/Ubuntu podemos actualizar mediante:
+      <pre>
+      <code data-trim contenteditable>
+        apt-get update libc6          </code>
+                </pre>
+    </p><p>
+	     En sistemas RHEL/CentOS podemos actualiza mediante:
+       <pre>
+       <code data-trim contenteditable>
+         yum update glibc          </code>
+                 </pre>
+     </p><p>
+	      Para comprobar los procesos relacionados con glibc:
+        <pre>
+        <code data-trim contenteditable>
+          lsof | grep libc | awk '{print $1}' | sort | uniq          </code>
+                  </pre>
+      </p>
+  </section>
+</section>
+<section>
+  <h3>Referencias</h3>
+  <ul>
+    <li><a href="http://blog.elhacker.net/2015/01/ghost-glibc-buffer-overflow-en-gethostbyname-cve-2015-0235.html">
+http://blog.elhacker.net/2015/01/ghost-glibc-buffer-overflow-en-gethostbyname-cve-2015-0235.html</a></li>
+<li><a href="http://www.hackplayers.com/2015/01/ghost-cve-2015-0235-el-fantasma-de-linux.html">
+http://www.hackplayers.com/2015/01/ghost-cve-2015-0235-el-fantasma-de-linux.html</a></li>
+<li><a href="https://blog.qualys.com/laws-of-vulnerabilities/2015/01/27/the-ghost-vulnerability">
+https://blog.qualys.com/laws-of-vulnerabilities/2015/01/27/the-ghost-vulnerability</a></li>
+<li><a href="https://cve.mitre.org/cgi-bin/cvename.cgi?name=cve-2015-0235">
+https://cve.mitre.org/cgi-bin/cvename.cgi?name=cve-2015-0235</a></li>
+<li><a href="https://www.nccgroup.trust/us/about-us/newsroom-and-events/blog/2015/january/vulnerability-overview-ghost-cve-2015-0235/">
+https://www.nccgroup.trust/us/about-us/newsroom-and-events/blog/2015/january/vulnerability-overview-ghost-cve-2015-0235/</a></li>
+  </ul>
+</section>
 
     </div>
-
   </div>
 
   <script src="lib/js/head.min.js"></script>
